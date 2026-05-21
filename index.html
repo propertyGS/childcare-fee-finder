@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Childcare Fee Finder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f0f2f5;
+    min-height: 100vh;
+    color: #1a202c;
+  }
+
+  .top-bar {
+    background: #1F4E79;
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .top-bar-logo {
+    width: 28px; height: 28px;
+    background: #fff;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .top-bar-logo svg { width: 18px; height: 18px; }
+  .top-bar h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.01em;
+  }
+  .top-bar-badge {
+    margin-left: auto;
+    font-size: 11px;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  .search-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 1.5rem;
+  }
+  .search-card h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 1.25rem;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 180px 180px auto;
+    gap: 12px;
+    align-items: end;
+  }
+  @media (max-width: 700px) {
+    .controls { grid-template-columns: 1fr 1fr; }
+    .controls .search-btn { grid-column: 1/-1; }
+  }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  input[type=text], select {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #1a202c;
+    background: #fff;
+    transition: border-color 0.15s;
+    outline: none;
+  }
+  input[type=text]:focus, select:focus { border-color: #1F4E79; }
+  input[type=text]::placeholder { color: #94a3b8; }
+
+  .autocomplete-wrap { position: relative; }
+  .autocomplete-list {
+    position: absolute;
+    top: 100%;
+    left: 0; right: 0;
+    background: #fff;
+    border: 1.5px solid #e2e8f0;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 200;
+    display: none;
+  }
+  .autocomplete-list.open { display: block; }
+  .autocomplete-item {
+    padding: 9px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #334155;
+  }
+  .autocomplete-item:hover, .autocomplete-item.selected { background: #f1f5f9; }
+
+  .search-btn {
+    height: 42px;
+    padding: 0 24px;
+    background: #1F4E79;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, transform 0.1s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .search-btn:hover { background: #163d61; }
+  .search-btn:active { transform: scale(0.98); }
+  .search-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+  .search-btn svg { width: 16px; height: 16px; }
+
+  .progress-bar {
+    height: 3px;
+    background: #e2e8f0;
+    border-radius: 2px;
+    margin-top: 1rem;
+    overflow: hidden;
+    display: none;
+  }
+  .progress-bar.active { display: block; }
+  .progress-fill {
+    height: 100%;
+    background: #1F4E79;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+  .status-msg {
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 8px;
+    min-height: 18px;
+  }
+  .status-msg.error { color: #dc2626; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 1.5rem;
+  }
+  .stat-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  }
+  .stat-label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .stat-value { font-size: 26px; font-weight: 700; color: #1F4E79; line-height: 1; }
+  .stat-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+  .results-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    overflow: hidden;
+    display: none;
+  }
+  .results-card.visible { display: block; }
+
+  .results-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .results-header h3 { font-size: 14px; font-weight: 600; color: #1a202c; }
+  .results-header .preview-note { font-size: 12px; color: #94a3b8; }
+
+  .download-btn {
+    height: 36px;
+    padding: 0 18px;
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 7px;
+    transition: background 0.15s;
+  }
+  .download-btn:hover { background: #15803d; }
+  .download-btn svg { width: 15px; height: 15px; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: #f8fafc; border-bottom: 1.5px solid #e2e8f0; }
+  th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-green  { background: #dcfce7; color: #166534; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-amber  { background: #fef9c3; color: #854d0e; }
+  .badge-gray   { background: #f1f5f9; color: #475569; }
+  .badge-red    { background: #fee2e2; color: #991b1b; }
+
+  .fee-val { font-variant-numeric: tabular-nums; font-weight: 600; color: #1F4E79; }
+  .fee-none { color: #cbd5e1; }
+
+  .empty-state {
+    padding: 3rem;
+    text-align: center;
+    color: #94a3b8;
+  }
+  .empty-state svg { width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#1F4E79" stroke-width="2.5" stroke-linecap="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  </div>
+  <h1>Childcare Fee Finder</h1>
+  <span class="top-bar-badge">Property · Network Planning Tool</span>
+</div>
+
+<div class="container">
+
+  <div class="search-card">
+    <h2>Search</h2>
+    <div class="controls">
+      <div>
+        <label for="suburb-input">Suburb &amp; State</label>
+        <div class="autocomplete-wrap">
+          <input type="text" id="suburb-input" placeholder="e.g. Box Hill VIC, Doncaster VIC…" autocomplete="off">
+          <div class="autocomplete-list" id="autocomplete-list"></div>
+        </div>
+      </div>
+      <div>
+        <label for="radius-select">Search radius — <span id="radius-label">10.5 km</span></label>
+        <div style="padding: 4px 0 2px;">
+          <input type="range" id="radius-select"
+            min="1.5" max="30" step="1" value="10.5"
+            oninput="document.getElementById('radius-label').textContent = parseFloat(this.value).toFixed(1) + ' km'"
+            style="width:100%;height:6px;border-radius:4px;accent-color:#1F4E79;cursor:pointer;border:none;outline:none;background:linear-gradient(to right,#1F4E79 0%,#1F4E79 32%,#e2e8f0 32%,#e2e8f0 100%)">
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;margin-top:3px">
+          <span>1.5 km</span><span>15 km</span><span>30 km</span>
+        </div>
+      </div>
+      <div>
+        <label for="type-select">Service type</label>
+        <select id="type-select">
+          <option value="ALL">All types</option>
+          <option value="LONGDC">Long day care only</option>
+          <option value="OOSH">OSHC only</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="search-btn" id="search-btn" onclick="doSearch()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search
+        </button>
+      </div>
+    </div>
+    <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="status-msg" id="status-msg"></div>
+  </div>
+
+  <div class="stats-row" id="stats-row" style="display:none">
+    <div class="stat-card">
+      <div class="stat-label">Total services</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-sub" id="stat-suburb">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Long day care</div>
+      <div class="stat-value" id="stat-ldc">—</div>
+      <div class="stat-sub">centres</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">0–12m fee range</div>
+      <div class="stat-value" id="stat-fee-range">—</div>
+      <div class="stat-sub" id="stat-fee-avg"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Exceeding NQS</div>
+      <div class="stat-value" id="stat-exceeding">—</div>
+      <div class="stat-sub">services rated exceeding</div>
+    </div>
+  </div>
+
+  <div class="results-card" id="results-card">
+    <div class="results-header">
+      <div>
+        <h3 id="results-title">Results</h3>
+        <div class="preview-note" id="preview-note"></div>
+      </div>
+      <button class="download-btn" id="download-btn" onclick="downloadExcel()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Excel
+      </button>
+    </div>
+    <div class="table-wrap">
+      <table id="preview-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Service name</th>
+            <th>Type</th>
+            <th>NQS rating</th>
+            <th>CCS</th>
+            <th>Suburb</th>
+            <th>0–12m ($)</th>
+            <th>13–24m ($)</th>
+            <th>25–35m ($)</th>
+            <th>36m+ ($)</th>
+            <th>Inclusions</th>
+          </tr>
+        </thead>
+        <tbody id="preview-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const ALGOLIA_APP_ID  = "CGQW4YLCUR";
+const ALGOLIA_API_KEY = "59d33900544ce513400031e6bff95522";
+const ALGOLIA_INDEX   = "production_services";
+const ALGOLIA_URL     = `https://${ALGOLIA_APP_ID}-dsn.algolia.net/1/indexes/${ALGOLIA_INDEX}/query`;
+const BASE_URL        = "https://startingblocks.gov.au";
+
+const AGE_MAP = {"0012MN":"0–12 months","1324MN":"13–24 months","2535MN":"25–35 months","36MNPR":"36m+ to preschool","SCHOOL":"School age"};
+const SESSION_MAP = {"FULLDY":"Full day","HALFDY":"Half day","BFSCHL":"Before school","AFSCHL":"After school","VCTNDY":"Vacation","STNDRD":"Standard hours"};
+const RATING_MAP = {"EXCD":"Exceeding NQS","MEET":"Meeting NQS","WORK":"Working Towards NQS","SIGN":"Significant Improvement Required","PROV":"Not yet rated","NONE":"Not yet rated","":"Not yet rated"};
+const SERVICE_MAP = {"LONGDC":"Long day care","OOSHAfter":"OSHC (After)","OOSHBefore":"OSHC (Before)","OOSHVacation":"OSHC (Vacation)","FDCARE":"Family day care","PRSCHL":"Preschool / Kinder","IHHC":"In-home care"};
+const INC_MAP = {"AFTTEA":"Afternoon tea","BRKFST":"Breakfast","EDUPRO":"Educational program","EXCINC":"Excursions","LUNCH":"Lunch","MORTEA":"Morning tea","NAPPIE":"Nappies","OTHMEA":"Other meals","TRANSP":"Transport","SUNSCR":"Sunscreen","UNIFRM":"Uniform","BEDDIN":"Bedding","FORMULM":"Formula milk","SNACKS":"Snacks","WATBOT":"Water bottle"};
+
+let allServices = [];
+
+async function geocode(suburb) {
+  const query = suburb.trim();
+
+  // 1. Google Maps Geocoding API (same as StartingBlocks)
+  const GMAPS_KEY = "AIzaSyAGV7CpvG0OpnyGzaJiJ4rHWS43yXJQ9sc";
+  try {
+    const q = encodeURIComponent(query + ', Australia');
+    const resp = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?address=${q}&components=country:AU&key=${GMAPS_KEY}`
+    );
+    const data = await resp.json();
+    if (data.status === 'OK' && data.results && data.results.length) {
+      const loc = data.results[0].geometry.location;
+      const c = [loc.lat, loc.lng];
+      c._source = 'Google Maps';
+      c._label = data.results[0].formatted_address.split(',').slice(0,2).join(',');
+      return c;
+    }
+    console.warn('Google Maps:', data.status);
+  } catch(e) {
+    console.warn('Google Maps unavailable:', e.message);
+  }
+
+  // 2. Nominatim fallback (OpenStreetMap)
+  try {
+    const q = encodeURIComponent(query + ', Australia');
+    const resp = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=5&countrycodes=au`,
+      {headers: {'Accept': 'application/json'}}
+    );
+    const data = await resp.json();
+    if (data && data.length) {
+      const preferred = ['suburb','quarter','neighbourhood','town','village','city_district','postcode'];
+      const best = data.find(d => preferred.includes(d.type)) || data[0];
+      const c = [parseFloat(best.lat), parseFloat(best.lon)];
+      c._source = 'Nominatim';
+      c._label = best.display_name.split(',').slice(0,2).join(',');
+      return c;
+    }
+  } catch(e) {
+    console.warn('Nominatim unavailable:', e.message);
+  }
+
+  return null;
+}
+
+function parseHit(hit) {
+  const addr = hit.address || {};
+  const line1 = [addr.address1, addr.address2].filter(Boolean).join(', ');
+  const fullAddr = [line1, addr.suburbTown, addr.postcode, addr.stateTerritory].filter(Boolean).join(', ');
+  const types = (hit.type || []);
+  let svcType = 'Other';
+  for (const t of types) { if (SERVICE_MAP[t]) { svcType = SERVICE_MAP[t]; break; } }
+  const rating = RATING_MAP[hit.rating || ''] || 'Not yet rated';
+  const ccs = !!(hit.CCSDataReceived || hit.ccsApproved);
+  const oid = hit.publicId || hit.objectID || '';
+  const slug = (hit.name||'').toLowerCase().replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'-');
+  const url = `${BASE_URL}/find-child-care/${oid}/${slug}`;
+
+  const inclMap = {};
+  const inclRaw = Array.isArray(hit.inclusions) ? hit.inclusions : [];
+  for (const inc of inclRaw) {
+    if (typeof inc !== 'object' || !inc) continue;
+    const k = `${inc.AgeGroup||''}|${inc.SessionType||''}`;
+    if (inc.InclusionDescription) inclMap[k] = inc.InclusionDescription;
+  }
+
+  const fees = [];
+  const feesRaw = typeof hit.fees === 'object' && hit.fees ? hit.fees : {};
+  for (const f of (feesRaw.SBSServiceFee || [])) {
+    if (typeof f !== 'object' || !f) continue;
+    const ac = f.AgeGroup || '';
+    const sc = f.SessionType || '';
+    const rawInc = inclMap[`${ac}|${sc}`] || f.InclusionCode || '';
+    let inc = rawInc;
+    if (rawInc && rawInc === rawInc.toUpperCase() && rawInc.length > 3) {
+      inc = rawInc.split(',').map(c => INC_MAP[c.trim()] || c.trim()).join(', ');
+    }
+    fees.push({ ageCode:ac, sessCode:sc, ageLabel:AGE_MAP[ac]||ac, sessLabel:SESSION_MAP[sc]||sc, fee:parseFloat(f.UsualFeeAmount||0), inclusions:inc, updated:(f.LastUpdatedFile||'').slice(0,10) });
+  }
+
+  function feeFor(ac, sc='FULLDY') {
+    const m = fees.find(f=>f.ageCode===ac&&f.sessCode===sc);
+    return m && m.fee > 0 ? m.fee : null;
+  }
+  function inclFor(ac) {
+    const m = fees.find(f=>f.ageCode===ac&&f.inclusions);
+    return m ? m.inclusions : '';
+  }
+
+  return { name:hit.name||'Unknown', address:fullAddr, suburb:addr.suburbTown||'', postcode:String(addr.postcode||''), state:addr.stateTerritory||'', svcType, rating, ccs, providerId:hit.providerId||'', serviceId:hit.serviceId||'', publicId:oid, url, fees, feeFor, inclFor, types };
+}
+
+function filterByType(svcs, typeFilter) {
+  if (typeFilter === 'ALL') return svcs;
+  if (typeFilter === 'LONGDC') return svcs.filter(s => s.types.includes('LONGDC'));
+  if (typeFilter === 'OOSH') return svcs.filter(s => s.types.some(t=>t.startsWith('OOSH')));
+  return svcs;
+}
+
+function setStatus(msg, isError=false) {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className = 'status-msg' + (isError ? ' error' : '');
+}
+function setProgress(pct) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+async function algoliaSearch(lat, lng, radiusKm) {
+  const all = [];
+  let page = 0, totalPages = 1;
+  while (page < totalPages) {
+    let resp, data;
+    try {
+      resp = await fetch(ALGOLIA_URL, {
+        method: 'POST',
+        headers: {'X-Algolia-Application-Id': ALGOLIA_APP_ID, 'X-Algolia-API-Key': ALGOLIA_API_KEY, 'Content-Type':'application/json'},
+        body: JSON.stringify({query:'', aroundLatLng:`${lat},${lng}`, aroundRadius:radiusKm*1000, hitsPerPage:100, page, attributesToHighlight:[]})
+      });
+    } catch(netErr) {
+      throw new Error(`Network error reaching Algolia: ${netErr.message}. Your corporate proxy may be blocking the request.`);
+    }
+    const raw = await resp.text();
+    try { data = JSON.parse(raw); }
+    catch(e) { throw new Error(`Unexpected response from Algolia (status ${resp.status}): ${raw.slice(0,200)}`); }
+    if (data.message || data.error) throw new Error(`Algolia API error: ${data.message || data.error}`);
+    totalPages = data.nbPages || 1;
+    const nbHits = data.nbHits || 0;
+    if (page === 0) {
+      if (nbHits === 0) throw new Error(`Algolia returned 0 hits. Raw response: ${raw.slice(0,300)}`);
+      setStatus(`Found ${nbHits} services, loading all ${totalPages} page${totalPages>1?'s':''}…`);
+    }
+    for (const h of (data.hits||[])) { try { all.push(parseHit(h)); } catch(e) { console.warn('parseHit failed:', e, h); } }
+    page++;
+    setProgress(20 + (page/totalPages)*70);
+  }
+  return all;
+}
+
+function ratingBadge(r) {
+  if (r.includes('Exceeding')) return `<span class="badge badge-green">${r}</span>`;
+  if (r.includes('Meeting'))   return `<span class="badge badge-blue">${r}</span>`;
+  if (r.includes('Working'))   return `<span class="badge badge-amber">${r}</span>`;
+  if (r.includes('Significant')) return `<span class="badge badge-red">${r}</span>`;
+  return `<span class="badge badge-gray">${r}</span>`;
+}
+function fmtFee(v) {
+  return v != null ? `<span class="fee-val">$${v.toFixed(0)}</span>` : `<span class="fee-none">—</span>`;
+}
+
+function renderTable(svcs) {
+  const tbody = document.getElementById('preview-body');
+  const preview = svcs.slice(0,50);
+  tbody.innerHTML = preview.map((s,i) => `
+    <tr>
+      <td style="color:#94a3b8;font-size:12px">${i+1}</td>
+      <td><a href="${s.url}" target="_blank" style="color:#1F4E79;text-decoration:none;font-weight:500">${s.name}</a></td>
+      <td style="white-space:nowrap;font-size:12px;color:#475569">${s.svcType}</td>
+      <td>${ratingBadge(s.rating)}</td>
+      <td>${s.ccs ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>'}</td>
+      <td style="white-space:nowrap;font-size:12px">${s.suburb}</td>
+      <td>${fmtFee(s.feeFor('0012MN'))}</td>
+      <td>${fmtFee(s.feeFor('1324MN'))}</td>
+      <td>${fmtFee(s.feeFor('2535MN'))}</td>
+      <td>${fmtFee(s.feeFor('36MNPR'))}</td>
+      <td style="font-size:12px;color:#64748b;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.inclFor('0012MN')||'—'}</td>
+    </tr>`).join('');
+  document.getElementById('preview-note').textContent = svcs.length > 50 ? `Showing first 50 of ${svcs.length} — download Excel for full dataset` : `${svcs.length} services`;
+}
+
+function updateStats(svcs, suburbName) {
+  const ldc = svcs.filter(s=>s.types.includes('LONGDC'));
+  const fees0012 = ldc.flatMap(s=>s.fees.filter(f=>f.ageCode==='0012MN'&&f.sessCode==='FULLDY'&&f.fee>0).map(f=>f.fee));
+  document.getElementById('stat-total').textContent = svcs.length;
+  document.getElementById('stat-suburb').textContent = suburbName;
+  document.getElementById('stat-ldc').textContent = ldc.length;
+  document.getElementById('stat-exceeding').textContent = svcs.filter(s=>s.rating.includes('Exceeding')).length;
+  if (fees0012.length) {
+    const mn = Math.min(...fees0012), mx = Math.max(...fees0012), avg = fees0012.reduce((a,b)=>a+b,0)/fees0012.length;
+    document.getElementById('stat-fee-range').textContent = `$${mn}–$${mx}`;
+    document.getElementById('stat-fee-avg').textContent = `Avg $${Math.round(avg)}/day`;
+  } else {
+    document.getElementById('stat-fee-range').textContent = '—';
+    document.getElementById('stat-fee-avg').textContent = '';
+  }
+  document.getElementById('stats-row').style.display = 'grid';
+}
+
+async function doSearch() {
+  const suburbRaw = document.getElementById('suburb-input').value.trim();
+  if (!suburbRaw) { setStatus('Please enter a suburb name.', true); return; }
+  const radius = parseFloat(document.getElementById('radius-select').value);
+  const typeFilter = document.getElementById('type-select').value;
+
+  document.getElementById('search-btn').disabled = true;
+  document.getElementById('results-card').classList.remove('visible');
+  document.getElementById('stats-row').style.display = 'none';
+  document.getElementById('progress-bar').classList.add('active');
+  setProgress(5);
+  setStatus('Locating suburb…');
+
+  let coords;
+  try { coords = await geocode(suburbRaw); } catch(e) { coords = null; }
+  if (!coords) { setStatus(`"${suburbRaw}" not found. Try being more specific e.g. "Doncaster VIC" or postcode "3108".`, true); document.getElementById('search-btn').disabled = false; document.getElementById('progress-bar').classList.remove('active'); return; }
+
+  setProgress(15);
+  setStatus(`📍 ${coords._source||'geocoder'}: ${coords._label||coords[0].toFixed(5)+', '+coords[1].toFixed(5)} — connecting…`);
+
+  try {
+    const raw = await algoliaSearch(coords[0], coords[1], radius);
+    const svcs = filterByType(raw, typeFilter);
+    allServices = svcs;
+
+    setProgress(100);
+    setStatus(`✓ ${svcs.length} services loaded successfully.`);
+    updateStats(svcs, suburbRaw);
+    renderTable(svcs);
+    document.getElementById('results-title').textContent = `${svcs.length} services — ${suburbRaw} (${radius} km radius)`;
+    document.getElementById('results-card').classList.add('visible');
+  } catch(e) {
+    setStatus('Error: ' + e.message, true);
+  } finally {
+    document.getElementById('search-btn').disabled = false;
+    setTimeout(()=>document.getElementById('progress-bar').classList.remove('active'), 1500);
+  }
+}
+
+function downloadExcel() {
+  if (!allServices.length) return;
+  const suburbRaw = document.getElementById('suburb-input').value.trim();
+  const wb = XLSX.utils.book_new();
+  const today = new Date().toLocaleDateString('en-AU');
+
+  const sumRows = [
+    [`Childcare Centre Fees — ${suburbRaw} — StartingBlocks.gov.au — ${today}`],
+    [],
+    ['Service Name','Service Type','NQS Rating','CCS Approved','Address','Suburb','Postcode','State','0-12m Full Day ($)','13-24m Full Day ($)','25-35m Full Day ($)','36m+ Full Day ($)','36m+ Half Day ($)','Before School ($)','After School ($)','Vacation ($)','Inclusions (0-12m)','Provider ID','StartingBlocks URL']
+  ];
+  for (const s of allServices) {
+    const f = (ac,sc='FULLDY') => { const v=s.feeFor(ac,sc); return v!=null?v:''; };
+    sumRows.push([
+      s.name, s.svcType, s.rating, s.ccs?'Yes':'No',
+      s.address, s.suburb, s.postcode, s.state,
+      f('0012MN'), f('1324MN'), f('2535MN'), f('36MNPR'),
+      f('36MNPR','HALFDY'), f('SCHOOL','BFSCHL'), f('SCHOOL','AFSCHL'), f('SCHOOL','VCTNDY'),
+      s.inclFor('0012MN'), s.providerId, s.url
+    ]);
+  }
+  const ws1 = XLSX.utils.aoa_to_sheet(sumRows);
+  ws1['!cols'] = [38,20,22,10,45,18,10,6,14,14,14,14,12,12,12,12,35,16,60].map(w=>({wch:w}));
+  ws1['!merges'] = [{s:{r:0,c:0},e:{r:0,c:18}}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+  const feeRows = [['Service Name','Suburb','Postcode','Service Type','NQS Rating','CCS Approved','Age Group','Session Type','Fee ($)','Inclusions','Fee Last Updated','Provider ID','Service ID','URL']];
+  for (const s of allServices) {
+    if (!s.fees.length) {
+      feeRows.push([s.name,s.suburb,s.postcode,s.svcType,s.rating,s.ccs?'Yes':'No','—','—','No data','','',s.providerId,s.serviceId,s.url]);
+    } else {
+      for (const f of s.fees) {
+        feeRows.push([s.name,s.suburb,s.postcode,s.svcType,s.rating,s.ccs?'Yes':'No',f.ageLabel,f.sessLabel,f.fee||'',f.inclusions,f.updated,s.providerId,s.serviceId,s.url]);
+      }
+    }
+  }
+  const ws2 = XLSX.utils.aoa_to_sheet(feeRows);
+  ws2['!cols'] = [38,16,10,20,22,10,22,22,10,35,14,16,40,60].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws2, 'All Fees');
+
+  const counts = {};
+  for (const s of allServices) counts[s.rating] = (counts[s.rating]||0)+1;
+  const nqsRows = [['NQS Rating','Count','% of Total']];
+  const tot = allServices.length;
+  for (const [r,c] of Object.entries(counts).sort()) nqsRows.push([r,c,`${((c/tot)*100).toFixed(1)}%`]);
+  const ws3 = XLSX.utils.aoa_to_sheet(nqsRows);
+  ws3['!cols'] = [{wch:30},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'NQS Summary');
+
+  const safeName = suburbRaw.replace(/[^a-z0-9]/gi,'_');
+  XLSX.writeFile(wb, `childcare_fees_${safeName}.xlsx`);
+}
+
+const input = document.getElementById('suburb-input');
+const list  = document.getElementById('autocomplete-list');
+let selIdx = -1, acTimer = null;
+
+// Live autocomplete via Google Maps Places Autocomplete API
+async function fetchSuggestions(q) {
+  const GMAPS_KEY = "AIzaSyAGV7CpvG0OpnyGzaJiJ4rHWS43yXJQ9sc";
+  try {
+    const resp = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&components=country:au&types=(regions)&key=${GMAPS_KEY}`
+    );
+    const data = await resp.json();
+    if (data.status === 'OK') return data.predictions.slice(0,8).map(p=>p.description);
+  } catch(e) {}
+  return [];
+}
+
+input.addEventListener('input', () => {
+  const q = input.value.trim();
+  list.classList.remove('open');
+  clearTimeout(acTimer);
+  if (q.length < 2) return;
+  acTimer = setTimeout(async () => {
+    const suggestions = await fetchSuggestions(q);
+    if (!suggestions.length) { list.classList.remove('open'); return; }
+    list.innerHTML = suggestions.map(s=>`<div class="autocomplete-item" data-val="${s}">${s}</div>`).join('');
+    list.classList.add('open');
+    selIdx = -1;
+    list.querySelectorAll('.autocomplete-item').forEach(el => {
+      el.addEventListener('click', ()=>{ input.value = el.dataset.val; list.classList.remove('open'); });
+    });
+  }, 300);
+});
+input.addEventListener('keydown', e => {
+  const items = list.querySelectorAll('.autocomplete-item');
+  if (e.key === 'ArrowDown') { selIdx = Math.min(selIdx+1,items.length-1); items.forEach((el,i)=>el.classList.toggle('selected',i===selIdx)); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { selIdx = Math.max(selIdx-1,0); items.forEach((el,i)=>el.classList.toggle('selected',i===selIdx)); e.preventDefault(); }
+  else if (e.key === 'Enter') { if (selIdx>=0) { input.value = items[selIdx].dataset.val; list.classList.remove('open'); } else { doSearch(); } }
+  else if (e.key === 'Escape') list.classList.remove('open');
+});
+document.addEventListener('click', e=>{ if (!e.target.closest('.autocomplete-wrap')) list.classList.remove('open'); });
+
+// Update slider track fill on input
+document.getElementById('radius-select').addEventListener('input', function() {
+  const pct = ((this.value - this.min) / (this.max - this.min)) * 100;
+  this.style.background = `linear-gradient(to right,#1F4E79 0%,#1F4E79 ${pct}%,#e2e8f0 ${pct}%,#e2e8f0 100%)`;
+});
+</script>
+</body>
+</html>
