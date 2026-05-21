@@ -286,9 +286,9 @@
     <h2>Search</h2>
     <div class="controls">
       <div>
-        <label for="suburb-input">Suburb &amp; State</label>
+        <label for="suburb-input">Suburb, State or Postcode</label>
         <div class="autocomplete-wrap">
-          <input type="text" id="suburb-input" placeholder="e.g. Box Hill VIC, Doncaster VIC…" autocomplete="off">
+          <input type="text" id="suburb-input" placeholder="e.g. Box Hill VIC, Doncaster VIC, 3128…" autocomplete="off">
           <div class="autocomplete-list" id="autocomplete-list"></div>
         </div>
       </div>
@@ -297,7 +297,7 @@
         <div style="padding: 4px 0 2px;">
           <input type="range" id="radius-select"
             min="1.5" max="30" step="1" value="10.5"
-            oninput="document.getElementById('radius-label').textContent = parseFloat(this.value).toFixed(1) + ' km'"
+            oninput="document.getElementById('radius-label').textContent = parseFloat(this.value).toFixed(1) + ' km'; const pct=((this.value-this.min)/(this.max-this.min))*100; this.style.background=`linear-gradient(to right,#1F4E79 0%,#1F4E79 ${pct}%,#e2e8f0 ${pct}%,#e2e8f0 100%)`"
             style="width:100%;height:6px;border-radius:4px;accent-color:#1F4E79;cursor:pointer;border:none;outline:none;background:linear-gradient(to right,#1F4E79 0%,#1F4E79 32%,#e2e8f0 32%,#e2e8f0 100%)">
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;margin-top:3px">
@@ -398,7 +398,10 @@ const INC_MAP = {"AFTTEA":"Afternoon tea","BRKFST":"Breakfast","EDUPRO":"Educati
 let allServices = [];
 
 async function geocode(suburb) {
-  const query = suburb.trim();
+  // If 4-digit postcode: search as-is. If suburb with no state: append VIC.
+  const IS_POSTCODE   = /^\d{4}$/.test(suburb.trim());
+  const HAS_STATE     = /\b(vic|nsw|qld|sa|wa|tas|nt|act)\b/i.test(suburb);
+  const query = IS_POSTCODE || HAS_STATE ? suburb.trim() : suburb.trim() + ', VIC';
 
   // 1. Google Maps Geocoding API (same as StartingBlocks)
   const GMAPS_KEY = "AIzaSyAGV7CpvG0OpnyGzaJiJ4rHWS43yXJQ9sc";
@@ -601,7 +604,25 @@ async function doSearch() {
 
   let coords;
   try { coords = await geocode(suburbRaw); } catch(e) { coords = null; }
-  if (!coords) { setStatus(`"${suburbRaw}" not found. Try being more specific e.g. "Doncaster VIC" or postcode "3108".`, true); document.getElementById('search-btn').disabled = false; document.getElementById('progress-bar').classList.remove('active'); return; }
+  if (!coords) {
+    // Try to get a spelling suggestion from Google Maps
+    let suggestion = '';
+    try {
+      const GMAPS_KEY = "AIzaSyAGV7CpvG0OpnyGzaJiJ4rHWS43yXJQ9sc";
+      const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(suburbRaw + ', Australia')}&key=${GMAPS_KEY}`);
+      const d = await r.json();
+      // Google sometimes returns ZERO_RESULTS but includes a formatted_address in partial_match
+      if (d.results && d.results.length > 0 && d.results[0].partial_match) {
+        suggestion = d.results[0].formatted_address.split(',').slice(0,2).join(',');
+      }
+    } catch(e) {}
+    const hint = suggestion ? ` Did you mean <b>${suggestion}</b>?` : ' Try e.g. "Doncaster VIC" or postcode "3108".';
+    document.getElementById('status-msg').innerHTML = `❌ "<b>${suburbRaw}</b>" not found.${hint}`;
+    document.getElementById('status-msg').className = 'status-msg error';
+    document.getElementById('search-btn').disabled = false;
+    document.getElementById('progress-bar').classList.remove('active');
+    return;
+  }
 
   setProgress(15);
   setStatus(`📍 ${coords._source||'geocoder'}: ${coords._label||coords[0].toFixed(5)+', '+coords[1].toFixed(5)} — connecting…`);
@@ -719,12 +740,6 @@ input.addEventListener('keydown', e => {
   else if (e.key === 'Escape') list.classList.remove('open');
 });
 document.addEventListener('click', e=>{ if (!e.target.closest('.autocomplete-wrap')) list.classList.remove('open'); });
-
-// Update slider track fill on input
-document.getElementById('radius-select').addEventListener('input', function() {
-  const pct = ((this.value - this.min) / (this.max - this.min)) * 100;
-  this.style.background = `linear-gradient(to right,#1F4E79 0%,#1F4E79 ${pct}%,#e2e8f0 ${pct}%,#e2e8f0 100%)`;
-});
 </script>
 </body>
 </html>
